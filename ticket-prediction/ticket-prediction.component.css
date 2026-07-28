@@ -1,0 +1,154 @@
+.dashboard-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 2rem;
+  font-family: 'Inter', 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  background-color: #f8f9fa;
+  min-height: 100vh;
+}
+
+.card {
+  background: white;
+  border-radius: 12px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  padding: 2rem;
+  width: 100%;
+  max-width: 550px;
+  margin-bottom: 1.5rem;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.form-card h2 {
+  margin-top: 0;
+  color: #212529;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.subtitle {
+  color: #6c757d;
+  margin-bottom: 1.5rem;
+  font-size: 0.95rem;
+}
+
+.form-group {
+  margin-bottom: 1.25rem;
+  display: flex;
+  flex-direction: column;
+}
+
+.form-group label {
+  margin-bottom: 0.5rem;
+  font-weight: 600;
+  color: #495057;
+  font-size: 0.9rem;
+}
+
+.form-group input, 
+.form-group select {
+  padding: 0.75rem 1rem;
+  border: 1px solid #ced4da;
+  border-radius: 8px;
+  font-size: 1rem;
+  color: #495057;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.form-group input:focus, 
+.form-group select:focus {
+  outline: none;
+  border-color: #80bdff;
+  box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+button {
+  width: 100%;
+  padding: 0.85rem;
+  background-color: #0d6efd;
+  color: white;
+  border: none;
+  border-radius: 8px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-top: 0.5rem;
+}
+
+button:hover:not([disabled]) {
+  background-color: #0b5ed7;
+}
+
+button[disabled] {
+  background-color: #a5c8fd;
+  cursor: not-allowed;
+}
+
+/* Result Card */
+.result-card {
+  border-left: 6px solid transparent;
+}
+
+.result-card h3 {
+  margin-top: 0;
+  margin-bottom: 1rem;
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.result-details {
+  display: flex;
+  justify-content: space-around;
+  align-items: center;
+  margin-top: 1rem;
+}
+
+.metric {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.metric .label {
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  opacity: 0.85;
+  margin-bottom: 0.5rem;
+}
+
+.metric .value {
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+/* Semaphore Styling */
+.risk-low {
+  background-color: #d1e7dd;
+  color: #0f5132;
+  border-color: #badbcc;
+  border-left-color: #198754;
+}
+
+.risk-medium {
+  background-color: #fff3cd;
+  color: #664d03;
+  border-color: #ffecb5;
+  border-left-color: #ffc107;
+}
+
+.risk-high {
+  background-color: #f8d7da;
+  color: #842029;
+  border-color: #f5c2c7;
+  border-left-color: #dc3545;
+}
+
+.error-card {
+  background-color: #f8d7da;
+  color: #842029;
+  border-color: #f5c2c7;
+  text-align: center;
+  font-weight: 500;
+}
