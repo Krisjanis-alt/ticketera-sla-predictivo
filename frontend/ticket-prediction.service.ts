@@ -27,11 +27,19 @@ export interface TicketInput {
   Prioridad: string;
   Seniority: string;
   Hora_Creacion: number;
+  Dia_Semana: string;
+  Tiempo_Resolucion_hrs: number;
+}
+
+export interface ExplicacionShap {
+  feature: string;
+  impacto: number;
 }
 
 export interface PredictionResponse {
   riesgo: 'Bajo' | 'Medio' | 'Alto';
   probabilidad: number;
+  explicacion_shap?: ExplicacionShap[];
 }
 
 @Injectable({

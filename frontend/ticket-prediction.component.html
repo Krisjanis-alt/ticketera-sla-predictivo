@@ -37,6 +37,25 @@
         <input id="Hora_Creacion" type="number" formControlName="Hora_Creacion" min="0" max="23" placeholder="0 - 23 horas">
       </div>
 
+      <div class="form-group">
+        <label for="Dia_Semana">Día de la Semana</label>
+        <select id="Dia_Semana" formControlName="Dia_Semana">
+          <option value="" disabled selected>Seleccione el día</option>
+          <option value="Lunes">Lunes</option>
+          <option value="Martes">Martes</option>
+          <option value="Miércoles">Miércoles</option>
+          <option value="Jueves">Jueves</option>
+          <option value="Viernes">Viernes</option>
+          <option value="Sábado">Sábado</option>
+          <option value="Domingo">Domingo</option>
+        </select>
+      </div>
+
+      <div class="form-group">
+        <label for="Tiempo_Resolucion_hrs">Tiempo de Resolución (horas)</label>
+        <input id="Tiempo_Resolucion_hrs" type="number" step="0.5" formControlName="Tiempo_Resolucion_hrs" min="0.5" placeholder="Ej. 4.5">
+      </div>
+
       <button type="submit" [disabled]="predictionForm.invalid || loading">
         {{ loading ? 'Consultando modelo...' : 'Evaluar Riesgo' }}
       </button>
@@ -60,6 +79,14 @@
         <span class="label">Probabilidad de Incumplimiento</span>
         <span class="value">{{ result.probabilidad }}%</span>
       </div>
+    </div>
+    
+    <div class="shap-chart-container" *ngIf="result.explicacion_shap && result.explicacion_shap.length > 0" style="margin-top: 20px; display: block;">
+      <canvas baseChart
+        [data]="barChartData"
+        [options]="barChartOptions"
+        [type]="barChartType">
+      </canvas>
     </div>
   </div>
 
