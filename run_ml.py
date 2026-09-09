@@ -1,93 +1,207 @@
-import pandas as pd
+"""
+Pipeline de extremo a extremo para entrenamiento del modelo XGBoost
+de prediccion de incumplimiento de SLA.
+
+Flujo:
+  1. Carga el dataset desde datasets/dataset_tickets_con_senal.csv
+  2. Particiona en Train (60%) / Val (20%) / Test (20%) con random_state=42
+  3. Preprocesa (imputacion + escalado + one-hot encoding)
+  4. Aplica SMOTE para balanceo + scale_pos_weight para maximizar Recall
+  5. Entrena XGBClassifier con pesos de clase
+  6. Imprime el classification report sobre el conjunto de Test
+  7. Exporta modelo_xgboost.pkl y preprocessor.pkl hacia backend/
+
+Uso:
+  py run_ml.py
+"""
+
+import os
+import sys
+import time
 import numpy as np
+import pandas as pd
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler, OneHotEncoder
 from sklearn.impute import SimpleImputer
 from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
+from sklearn.metrics import (
+    classification_report,
+    roc_auc_score,
+    recall_score,
+    precision_score,
+    f1_score,
+)
+from sklearn.utils.class_weight import compute_class_weight
 from imblearn.over_sampling import SMOTE
 from xgboost import XGBClassifier
 import joblib
 import warnings
-warnings.filterwarnings('ignore')
 
-def generar_datos_con_senal(n_muestras=5000, random_state=42):
-    np.random.seed(random_state)
-    ticket_id = np.arange(1, n_muestras + 1)
-    hora_creacion = np.random.randint(0, 24, n_muestras)
-    dia_semana = np.random.choice(['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'], n_muestras)
-    prioridad = np.random.choice(['Baja', 'Media', 'Alta'], n_muestras, p=[0.5, 0.3, 0.2])
-    seniority = np.random.choice(['Junior', 'Semi-Senior', 'Senior'], n_muestras, p=[0.4, 0.4, 0.2])
-    categoria = np.random.choice(['Hardware', 'Software', 'Redes', 'Acceso'], n_muestras)
-    
-    tiempo_base = np.random.gamma(shape=2.0, scale=4.0, size=n_muestras)
-    modificador_seniority = np.where(seniority == 'Junior', 4.0, np.where(seniority == 'Senior', -2.0, 0))
-    modificador_prioridad = np.where(prioridad == 'Baja', 6.0, np.where(prioridad == 'Alta', -2.0, 0))
-    
-    tiempo_resolucion = tiempo_base + modificador_seniority + modificador_prioridad
-    tiempo_resolucion = np.clip(tiempo_resolucion, a_min=0.5, a_max=None)
-    
-    riesgo = -4.0
-    riesgo += np.where(prioridad == 'Baja', 1.5, 0)
-    riesgo += np.where(prioridad == 'Alta', -1.5, 0)
-    riesgo += np.where(seniority == 'Junior', 1.2, 0)
-    riesgo += np.where(seniority == 'Senior', -1.0, 0)
-    riesgo += np.where(dia_semana == 'Lunes', 0.8, 0)
-    riesgo += (hora_creacion / 24.0) * 1.5
-    riesgo += (tiempo_resolucion / 8.0)
-    
-    probabilidad_incumplimiento = 1 / (1 + np.exp(-riesgo))
-    incumple_sla = np.random.binomial(1, probabilidad_incumplimiento)
-    
-    df = pd.DataFrame({
-        'ticket_id': ticket_id,
-        'dia_semana': dia_semana,
-        'hora_creacion': hora_creacion,
-        'categoria': categoria,
-        'prioridad': prioridad,
-        'seniority_agente': seniority,
-        'tiempo_resolucion_hrs': np.round(tiempo_resolucion, 2),
-        'incumple_sla': incumple_sla
-    })
-    
-    idx_nulos = np.random.choice(df.index, size=int(n_muestras * 0.05), replace=False)
-    df.loc[idx_nulos, 'tiempo_resolucion_hrs'] = np.nan
-    return df
+warnings.filterwarnings("ignore")
 
-df_tickets = generar_datos_con_senal(5000)
-X = df_tickets.drop(['ticket_id', 'incumple_sla'], axis=1)
-y = df_tickets['incumple_sla']
+# =====================================================================
+# Rutas
+# =====================================================================
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+DATA_PATH = os.path.join(BASE_DIR, "datasets", "dataset_tickets_con_senal.csv")
+BACKEND_DIR = os.path.join(BASE_DIR, "backend")
+MODEL_PATH = os.path.join(BACKEND_DIR, "modelo_xgboost.pkl")
+PREPROC_PATH = os.path.join(BACKEND_DIR, "preprocessor.pkl")
 
-X_temp, X_test, y_temp, y_test = train_test_split(X, y, test_size=0.20, random_state=42, stratify=y)
-X_train, X_val, y_train, y_val = train_test_split(X_temp, y_temp, test_size=0.25, random_state=42, stratify=y_temp)
+RANDOM_STATE = 42
 
-num_features = ['hora_creacion', 'tiempo_resolucion_hrs']
-cat_features = ['dia_semana', 'categoria', 'prioridad', 'seniority_agente']
 
-num_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='median')),
-    ('scaler', StandardScaler())
-])
+def main():
+    t0 = time.time()
 
-cat_transformer = Pipeline(steps=[
-    ('imputer', SimpleImputer(strategy='most_frequent')),
-    ('onehot', OneHotEncoder(handle_unknown='ignore'))
-])
+    # =================================================================
+    # 1. CARGA DE DATOS
+    # =================================================================
+    print("=" * 60)
+    print("  PIPELINE DE ENTRENAMIENTO - XGBoost SLA Predictivo")
+    print("=" * 60)
 
-preprocessor = ColumnTransformer(
-    transformers=[
-        ('num', num_transformer, num_features),
-        ('cat', cat_transformer, cat_features)
+    if not os.path.isfile(DATA_PATH):
+        print(f"\n[ERROR] No se encontro el dataset en: {DATA_PATH}")
+        sys.exit(1)
+
+    df = pd.read_csv(DATA_PATH)
+    print(f"\n[1/6] Dataset cargado: {DATA_PATH}")
+    print(f"      Filas: {len(df):,}  |  Columnas: {df.shape[1]}")
+    print(f"      Distribucion target (incumple_sla):")
+    dist = df["incumple_sla"].value_counts()
+    for v, c in dist.items():
+        pct = c / len(df) * 100
+        label = "Cumple SLA" if v == 0 else "Incumple SLA"
+        print(f"        {v} ({label}): {c:,} ({pct:.1f}%)")
+
+    # =================================================================
+    # 2. PARTICION DE DATOS
+    # =================================================================
+    X = df.drop(["ticket_id", "incumple_sla"], axis=1)
+    y = df["incumple_sla"]
+
+    # Train 60% / Val 20% / Test 20%
+    X_temp, X_test, y_temp, y_test = train_test_split(
+        X, y, test_size=0.20, random_state=RANDOM_STATE, stratify=y
+    )
+    X_train, X_val, y_train, y_val = train_test_split(
+        X_temp, y_temp, test_size=0.25, random_state=RANDOM_STATE, stratify=y_temp
+    )
+
+    print(f"\n[2/6] Particion de datos (random_state={RANDOM_STATE}):")
+    print(f"      Train : {len(X_train):,} muestras (60%)")
+    print(f"      Val   : {len(X_val):,} muestras (20%)")
+    print(f"      Test  : {len(X_test):,} muestras (20%)")
+
+    # =================================================================
+    # 3. PREPROCESAMIENTO
+    # =================================================================
+    num_features = ["hora_creacion", "tiempo_resolucion_hrs"]
+    cat_features = ["dia_semana", "categoria", "prioridad", "seniority_agente"]
+
+    num_transformer = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="median")),
+        ("scaler", StandardScaler()),
+    ])
+    cat_transformer = Pipeline(steps=[
+        ("imputer", SimpleImputer(strategy="most_frequent")),
+        ("onehot", OneHotEncoder(handle_unknown="ignore")),
     ])
 
-X_train_prep = preprocessor.fit_transform(X_train)
+    preprocessor = ColumnTransformer(transformers=[
+        ("num", num_transformer, num_features),
+        ("cat", cat_transformer, cat_features),
+    ])
 
-smote = SMOTE(random_state=42)
-X_train_smote, y_train_smote = smote.fit_resample(X_train_prep, y_train)
+    X_train_prep = preprocessor.fit_transform(X_train)
+    X_val_prep = preprocessor.transform(X_val)
+    X_test_prep = preprocessor.transform(X_test)
 
-xgb_model = XGBClassifier(use_label_encoder=False, eval_metric='logloss', random_state=42)
-xgb_model.fit(X_train_smote, y_train_smote)
+    n_features = X_train_prep.shape[1]
+    print(f"\n[3/6] Preprocesamiento completado:")
+    print(f"      Features numericas: {len(num_features)}")
+    print(f"      Features categoricas: {len(cat_features)}")
+    print(f"      Dimensiones post-encoding: {n_features}")
 
-joblib.dump(xgb_model, 'modelo_xgboost.pkl')
-joblib.dump(preprocessor, 'preprocessor.pkl')
-print("Modelos generados y exportados!")
+    # =================================================================
+    # 4. BALANCEO CON SMOTE + CALCULO DE PESOS DE CLASE
+    # =================================================================
+    smote = SMOTE(random_state=RANDOM_STATE)
+    X_train_smote, y_train_smote = smote.fit_resample(X_train_prep, y_train)
+
+    # Calcular scale_pos_weight para maximizar Recall
+    n_neg = int((y_train == 0).sum())
+    n_pos = int((y_train == 1).sum())
+    scale_pos_weight = n_neg / n_pos
+
+    print(f"\n[4/6] Balanceo de clases:")
+    print(f"      SMOTE: {len(X_train_prep):,} -> {len(X_train_smote):,} muestras")
+    print(f"      scale_pos_weight = {scale_pos_weight:.2f} (neg/pos = {n_neg}/{n_pos})")
+
+    # =================================================================
+    # 5. ENTRENAMIENTO XGBoost
+    # =================================================================
+    xgb_model = XGBClassifier(
+        n_estimators=200,
+        max_depth=6,
+        learning_rate=0.1,
+        scale_pos_weight=scale_pos_weight,
+        eval_metric="logloss",
+        random_state=RANDOM_STATE,
+    )
+
+    print(f"\n[5/6] Entrenando XGBoost...")
+    print(f"      n_estimators={xgb_model.n_estimators}, "
+          f"max_depth={xgb_model.max_depth}, "
+          f"lr={xgb_model.learning_rate}")
+
+    xgb_model.fit(
+        X_train_smote,
+        y_train_smote,
+        eval_set=[(X_val_prep, y_val)],
+        verbose=False,
+    )
+
+    # =================================================================
+    # 6. EVALUACION SOBRE TEST SET
+    # =================================================================
+    y_pred = xgb_model.predict(X_test_prep)
+    y_prob = xgb_model.predict_proba(X_test_prep)[:, 1]
+
+    recall = recall_score(y_test, y_pred)
+    precision = precision_score(y_test, y_pred)
+    f1 = f1_score(y_test, y_pred)
+    auc = roc_auc_score(y_test, y_prob)
+
+    print(f"\n[6/6] Evaluacion sobre Test Set ({len(X_test):,} muestras):")
+    print("-" * 60)
+    print(classification_report(y_test, y_pred, target_names=["Cumple SLA", "Incumple SLA"]))
+    print("-" * 60)
+    print(f"      Recall (Incumple) : {recall:.4f}")
+    print(f"      Precision         : {precision:.4f}")
+    print(f"      F1-Score          : {f1:.4f}")
+    print(f"      ROC-AUC           : {auc:.4f}")
+
+    # =================================================================
+    # EXPORTACION DE ARTEFACTOS -> backend/
+    # =================================================================
+    os.makedirs(BACKEND_DIR, exist_ok=True)
+
+    joblib.dump(xgb_model, MODEL_PATH)
+    joblib.dump(preprocessor, PREPROC_PATH)
+
+    elapsed = time.time() - t0
+
+    print(f"\n{'=' * 60}")
+    print(f"  ARTEFACTOS EXPORTADOS A backend/")
+    print(f"{'=' * 60}")
+    print(f"  -> {MODEL_PATH}")
+    print(f"  -> {PREPROC_PATH}")
+    print(f"\n  Tiempo total: {elapsed:.1f}s")
+    print(f"{'=' * 60}")
+
+
+if __name__ == "__main__":
+    main()

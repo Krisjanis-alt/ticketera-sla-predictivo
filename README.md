@@ -1,54 +1,81 @@
-# Predicción de Incumplimiento de SLA en ITSM
+# Prediccion de Incumplimiento de SLA en ITSM
 
-Este proyecto implementa una solución completa para predecir el riesgo de incumplimiento de SLA en tickets de soporte técnico utilizando Machine Learning y explicabilidad (XAI). 
+Este proyecto implementa una solucion completa para predecir el riesgo de incumplimiento de SLA en tickets de soporte tecnico utilizando Machine Learning y explicabilidad (XAI). 
 
 ## Arquitectura
 
-La arquitectura se compone de los siguientes módulos:
-- **Modelo de Machine Learning**: XGBClassifier (XGBoost) entrenado con técnicas de balanceo (SMOTE) para lidiar con el desbalanceo de clases natural en el incumplimiento de SLAs.
+La arquitectura se compone de los siguientes modulos:
+- **Modelo de Machine Learning**: XGBClassifier (XGBoost) entrenado con tecnicas de balanceo (SMOTE + `scale_pos_weight`) para maximizar el Recall sobre la clase minoritaria (incumplimiento de SLA).
 - **Backend (FastAPI)**: Una API REST de alto rendimiento que expone el modelo predictivo, procesa los inputs de los usuarios mediante un pipeline estructurado y genera valores SHAP para explicabilidad.
-- **Explicabilidad (SHAP)**: Análisis en tiempo real de cómo las características del ticket influyen en la predicción.
-- **Frontend (Angular)**: Interfaz de usuario interactiva para ingresar parámetros del ticket y visualizar tanto el riesgo predicho (bandas de riesgo) como la justificación del modelo.
+- **Explicabilidad (SHAP)**: Analisis en tiempo real de como las caracteristicas del ticket influyen en la prediccion.
+- **Frontend (Angular)**: Interfaz de usuario interactiva para ingresar parametros del ticket y visualizar tanto el riesgo predicho (bandas de riesgo) como la justificacion del modelo.
 
 ## Estructura del Directorio
 
 ```text
 /
-├── backend/            # API en FastAPI, modelos exportados y scripts de análisis
+├── backend/            # API en FastAPI + artefactos .pkl del modelo
+│   ├── main.py         # Servidor FastAPI (uvicorn)
+│   ├── modelo_xgboost.pkl
+│   ├── preprocessor.pkl
+│   └── requirements.txt
 ├── datasets/           # Datasets CSV generados y procesados
-├── docs/               # Documentación y gráficas generadas para informes (imágenes)
+├── docs/               # Documentacion y graficas para informes
+│   └── imagenes_informe/
 ├── frontend/           # Proyecto Angular 17+
-├── notebooks/          # Jupyter Notebooks con EDA, entrenamiento y evaluación
-├── .gitignore          # Archivos excluidos del control de versiones
-└── README.md           # Este archivo
+├── notebooks/          # Jupyter Notebooks con EDA, entrenamiento y evaluacion
+├── scripts/            # Scripts auxiliares de visualizacion
+├── run_ml.py           # Pipeline de entrenamiento de extremo a extremo
+├── .gitignore
+└── README.md
 ```
 
-## Instrucciones de Instalación y Ejecución
+## Reproduccion Completa del Flujo (4 comandos)
 
-### 1. Levantar el Backend (FastAPI)
+Los siguientes 4 comandos reproducen el flujo completo desde cero: entrenar el modelo, instalar dependencias del backend, levantar la API y arrancar el frontend.
 
-Navega al directorio `backend` e instala las dependencias. Se recomienda usar un entorno virtual.
+> **Prerequisitos**: Python 3.10+, Node.js 18+, npm. Ejecutar desde la raiz del proyecto.
+
+### Comando 1 — Entrenar el modelo y exportar artefactos
 
 ```bash
-cd backend
-python -m venv venv
-# Activar entorno (Windows)
-venv\Scripts\activate
-# Activar entorno (Mac/Linux)
-# source venv/bin/activate
-
-pip install -r requirements.txt
-uvicorn main:app --reload
+py run_ml.py
 ```
-La API estará disponible en `http://localhost:8000`.
 
-### 2. Levantar el Frontend (Angular)
+Carga `datasets/dataset_tickets_con_senal.csv`, entrena XGBoost con SMOTE + pesos de clase, imprime el classification report sobre Test, y exporta `modelo_xgboost.pkl` + `preprocessor.pkl` directamente a `backend/`.
 
-Navega al directorio `frontend` e instala las dependencias de Node:
+### Comando 2 — Instalar dependencias del backend
 
 ```bash
-cd frontend
-npm install
-ng serve
+pip install -r backend/requirements.txt
 ```
-La aplicación web estará disponible en `http://localhost:4200`.
+
+Instala las versiones exactas de todas las librerias necesarias (FastAPI, XGBoost, scikit-learn, SHAP, etc.).
+
+### Comando 3 — Levantar el backend (API REST)
+
+```bash
+uvicorn backend.main:app --reload
+```
+
+Inicia el servidor FastAPI en `http://localhost:8000`. La API carga automaticamente los artefactos `.pkl` exportados en el paso 1 y expone el endpoint `/predict` para predicciones con explicabilidad SHAP.
+
+### Comando 4 — Levantar el frontend (Angular)
+
+```bash
+cd frontend && npm install && ng serve
+```
+
+Instala dependencias de Node e inicia la aplicacion Angular en `http://localhost:4200`. La interfaz se conecta al backend para enviar tickets y visualizar predicciones de riesgo.
+
+## Stack Tecnologico
+
+| Capa | Tecnologia | Version |
+|------|-----------|---------|
+| Modelo | XGBoost | 3.4.1 |
+| ML Pipeline | scikit-learn | 1.9.0 |
+| Balanceo | imbalanced-learn (SMOTE) | 0.14.2 |
+| Explicabilidad | SHAP | 0.52.0 |
+| Backend | FastAPI + Uvicorn | 0.110.1 |
+| Frontend | Angular | 17+ |
+| Datos | Pandas + NumPy | 2.3.2 |
