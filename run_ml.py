@@ -4,12 +4,16 @@ de prediccion de incumplimiento de SLA.
 
 Flujo:
   1. Carga el dataset desde datasets/dataset_tickets_con_senal.csv
-  2. Particiona en Train (60%) / Val (20%) / Test (20%) con random_state=42
-  3. Preprocesa (imputacion + escalado + one-hot encoding)
-  4. Aplica SMOTE para balanceo + scale_pos_weight para maximizar Recall
-  5. Entrena XGBClassifier con pesos de clase
-  6. Imprime el classification report sobre el conjunto de Test
-  7. Exporta modelo_xgboost.pkl y preprocessor.pkl hacia backend/
+  2. Elimina 'tiempo_resolucion_hrs' (evento futuro — anti target leakage)
+  3. Particiona en Train (60%) / Val (20%) / Test (20%) con random_state=42
+  4. Preprocesa (imputacion + escalado + one-hot encoding)
+  5. Aplica SMOTE para balanceo + scale_pos_weight para maximizar Recall
+  6. Entrena XGBClassifier con pesos de clase
+  7. Imprime el classification report sobre el conjunto de Test
+  8. Exporta modelo_xgboost.pkl y preprocessor.pkl hacia backend/
+
+Modelos evaluados en el notebook complementario:
+  Regresion Logistica | Random Forest | XGBoost | MLP Deep (128-64-32)
 
 Uso:
   py run_ml.py
@@ -77,7 +81,17 @@ def main():
         print(f"        {v} ({label}): {c:,} ({pct:.1f}%)")
 
     # =================================================================
-    # 2. PARTICION DE DATOS
+    # 2. ELIMINACION DE TARGET LEAKAGE
+    # =================================================================
+    # 'tiempo_resolucion_hrs' es el tiempo real de resolucion del ticket.
+    # Es un EVENTO FUTURO que NO esta disponible al momento de la prediccion.
+    # Se elimina ANTES de cualquier particion o preprocesamiento.
+    df = df.drop(columns=["tiempo_resolucion_hrs"])
+    print(f"\n      -> 'tiempo_resolucion_hrs' eliminada (anti-leakage). "
+          f"Columnas restantes: {df.shape[1]}")
+
+    # =================================================================
+    # 3. PARTICION DE DATOS
     # =================================================================
     X = df.drop(["ticket_id", "incumple_sla"], axis=1)
     y = df["incumple_sla"]
@@ -90,15 +104,17 @@ def main():
         X_temp, y_temp, test_size=0.25, random_state=RANDOM_STATE, stratify=y_temp
     )
 
-    print(f"\n[2/6] Particion de datos (random_state={RANDOM_STATE}):")
+    print(f"\n[3/6] Particion de datos (random_state={RANDOM_STATE}):")
     print(f"      Train : {len(X_train):,} muestras (60%)")
     print(f"      Val   : {len(X_val):,} muestras (20%)")
     print(f"      Test  : {len(X_test):,} muestras (20%)")
 
     # =================================================================
-    # 3. PREPROCESAMIENTO
+    # 4. PREPROCESAMIENTO
     # =================================================================
-    num_features = ["hora_creacion", "tiempo_resolucion_hrs"]
+    # Nota: 'hora_creacion' es la unica feature numerica.
+    # 'tiempo_resolucion_hrs' fue eliminada en el paso anterior (anti-leakage).
+    num_features = ["hora_creacion"]
     cat_features = ["dia_semana", "categoria", "prioridad", "seniority_agente"]
 
     num_transformer = Pipeline(steps=[
@@ -120,13 +136,13 @@ def main():
     X_test_prep = preprocessor.transform(X_test)
 
     n_features = X_train_prep.shape[1]
-    print(f"\n[3/6] Preprocesamiento completado:")
-    print(f"      Features numericas: {len(num_features)}")
+    print(f"\n[4/6] Preprocesamiento completado:")
+    print(f"      Features numericas: {num_features}")
     print(f"      Features categoricas: {len(cat_features)}")
     print(f"      Dimensiones post-encoding: {n_features}")
 
     # =================================================================
-    # 4. BALANCEO CON SMOTE + CALCULO DE PESOS DE CLASE
+    # 5. BALANCEO CON SMOTE + CALCULO DE PESOS DE CLASE
     # =================================================================
     smote = SMOTE(random_state=RANDOM_STATE)
     X_train_smote, y_train_smote = smote.fit_resample(X_train_prep, y_train)
@@ -136,12 +152,12 @@ def main():
     n_pos = int((y_train == 1).sum())
     scale_pos_weight = n_neg / n_pos
 
-    print(f"\n[4/6] Balanceo de clases:")
-    print(f"      SMOTE: {len(X_train_prep):,} -> {len(X_train_smote):,} muestras")
+    print(f"\n[5/6] Balanceo de clases:")
+    print(f"      SMOTE: {X_train_prep.shape[0]:,} -> {X_train_smote.shape[0]:,} muestras")
     print(f"      scale_pos_weight = {scale_pos_weight:.2f} (neg/pos = {n_neg}/{n_pos})")
 
     # =================================================================
-    # 5. ENTRENAMIENTO XGBoost
+    # 6. ENTRENAMIENTO XGBoost
     # =================================================================
     xgb_model = XGBClassifier(
         n_estimators=200,
@@ -152,7 +168,7 @@ def main():
         random_state=RANDOM_STATE,
     )
 
-    print(f"\n[5/6] Entrenando XGBoost...")
+    print(f"\n[6/6] Entrenando XGBoost...")
     print(f"      n_estimators={xgb_model.n_estimators}, "
           f"max_depth={xgb_model.max_depth}, "
           f"lr={xgb_model.learning_rate}")
@@ -165,7 +181,7 @@ def main():
     )
 
     # =================================================================
-    # 6. EVALUACION SOBRE TEST SET
+    # 7. EVALUACION SOBRE TEST SET
     # =================================================================
     y_pred = xgb_model.predict(X_test_prep)
     y_prob = xgb_model.predict_proba(X_test_prep)[:, 1]
@@ -175,7 +191,7 @@ def main():
     f1 = f1_score(y_test, y_pred)
     auc = roc_auc_score(y_test, y_prob)
 
-    print(f"\n[6/6] Evaluacion sobre Test Set ({len(X_test):,} muestras):")
+    print(f"\n[7/7] Evaluacion sobre Test Set ({len(X_test):,} muestras):")
     print("-" * 60)
     print(classification_report(y_test, y_pred, target_names=["Cumple SLA", "Incumple SLA"]))
     print("-" * 60)

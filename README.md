@@ -5,7 +5,7 @@ Este proyecto implementa una solucion completa para predecir el riesgo de incump
 ## Arquitectura
 
 La arquitectura se compone de los siguientes modulos:
-- **Modelo de Machine Learning**: XGBClassifier (XGBoost) entrenado con tecnicas de balanceo (SMOTE + `scale_pos_weight`) para maximizar el Recall sobre la clase minoritaria (incumplimiento de SLA).
+- **Modelos de Machine Learning**: Se evaluan **4 modelos** — Regresion Logistica, Random Forest, XGBoost y MLP Deep (128-64-32) — usando SMOTE + `scale_pos_weight` para maximizar el Recall sobre la clase minoritaria. **XGBoost** es el modelo seleccionado para produccion por su mejor balance AUC/Latencia. La variable `tiempo_resolucion_hrs` esta explicitamente excluida en todos los pipelines para evitar *target leakage*.
 - **Backend (FastAPI)**: Una API REST de alto rendimiento que expone el modelo predictivo, procesa los inputs de los usuarios mediante un pipeline estructurado y genera valores SHAP para explicabilidad.
 - **Explicabilidad (SHAP)**: Analisis en tiempo real de como las caracteristicas del ticket influyen en la prediccion.
 - **Frontend (Angular)**: Interfaz de usuario interactiva para ingresar parametros del ticket y visualizar tanto el riesgo predicho (bandas de riesgo) como la justificacion del modelo.
@@ -42,7 +42,9 @@ Los siguientes 4 comandos reproducen el flujo completo desde cero: entrenar el m
 py run_ml.py
 ```
 
-Carga `datasets/dataset_tickets_con_senal.csv`, entrena XGBoost con SMOTE + pesos de clase, imprime el classification report sobre Test, y exporta `modelo_xgboost.pkl` + `preprocessor.pkl` directamente a `backend/`.
+Carga `datasets/dataset_tickets_con_senal.csv`, elimina `tiempo_resolucion_hrs` (anti-leakage), entrena XGBoost con SMOTE + pesos de clase, imprime el classification report sobre Test, y exporta `modelo_xgboost.pkl` + `preprocessor.pkl` directamente a `backend/`.
+
+> **Nota**: Para una comparativa completa de los **4 modelos** (Regresion Logistica, Random Forest, XGBoost, MLP Deep 128-64-32), ejecuta el notebook `notebooks/modelos_ticketera.ipynb` con *Restart & Run All*.
 
 ### Comando 2 — Instalar dependencias del backend
 
@@ -72,7 +74,8 @@ Instala dependencias de Node e inicia la aplicacion Angular en `http://localhost
 
 | Capa | Tecnologia | Version |
 |------|-----------|---------|
-| Modelo | XGBoost | 3.4.1 |
+| Modelos ML | Regresion Logistica, Random Forest, **XGBoost** (prod) | sklearn 1.9.0 / XGBoost 3.4.1 |
+| Modelo DL | MLP Deep 128-64-32 (TensorFlow/Keras) | TensorFlow 2.x |
 | ML Pipeline | scikit-learn | 1.9.0 |
 | Balanceo | imbalanced-learn (SMOTE) | 0.14.2 |
 | Explicabilidad | SHAP | 0.52.0 |
